@@ -129,20 +129,24 @@ fixenKeywords =
   , "phases"
   ]
 
-keywordCompletion :: Text.Text -> CompletionItem
-keywordCompletion keyword =
+completionItem ::
+  CompletionItemKind ->
+  Maybe Text.Text ->
+  Text.Text ->
   CompletionItem
-    { _label = keyword
+completionItem kind detail label =
+  CompletionItem
+    { _label = label
     , _labelDetails = Nothing
-    , _kind = Just CompletionItemKind_Keyword
+    , _kind = Just kind
     , _tags = Nothing
-    , _detail = Nothing
+    , _detail = detail
     , _documentation = Nothing
     , _deprecated = Nothing
     , _preselect = Nothing
     , _sortText = Nothing
     , _filterText = Nothing
-    , _insertText = Just keyword
+    , _insertText = Just label
     , _insertTextFormat = Nothing
     , _insertTextMode = Nothing
     , _textEdit = Nothing
@@ -153,12 +157,15 @@ keywordCompletion keyword =
     , _data_ = Nothing
     }
 
+keywordCompletion :: Text.Text -> CompletionItem
+keywordCompletion =
+  completionItem CompletionItemKind_Keyword Nothing
+
 relationCompletion :: Text.Text -> CompletionItem
-relationCompletion relation =
-  (keywordCompletion  relation)
-    { _kind = Just CompletionItemKind_Function
-    , _detail = Just "Fixen relation"
-    }
+relationCompletion =
+  completionItem
+    CompletionItemKind_Function
+    (Just "Fixen relation")
 
 changeText :: TextDocumentContentChangeEvent -> Text.Text
 changeText (TextDocumentContentChangeEvent (InR wholeDocument)) =
@@ -181,15 +188,15 @@ toLspRange maybeSpan =
       Range
         (Position 0 0)
         (Position 0 0)
-    Just span ->
+    Just sourceSpan ->
       Range
         ( toLspPosition
-            (Diagnostics.fixenStartLine span)
-            (Diagnostics.fixenStartColumn span)
+            (Diagnostics.fixenStartLine sourceSpan)
+            (Diagnostics.fixenStartColumn sourceSpan)
         )
         ( toLspPosition
-            (Diagnostics.fixenEndLine span)
-            (Diagnostics.fixenEndColumn span)
+            (Diagnostics.fixenEndLine sourceSpan)
+            (Diagnostics.fixenEndColumn sourceSpan)
         )
 
 toLspSeverity :: Diagnostics.FixenDiagnosticSeverity -> DiagnosticSeverity
