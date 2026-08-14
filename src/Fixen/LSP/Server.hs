@@ -6,6 +6,8 @@ module Fixen.LSP.Server (
 ) where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.IORef qualified as IORef
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import System.IO (hPutStrLn, stderr)
 
@@ -14,17 +16,20 @@ import Language.LSP.Protocol.Types
 import Language.LSP.Server
 
 import Fixen.Diagnostics qualified as Diagnostics
+import Fixen.IR.AST qualified as AST
 import Fixen.Monad (runFixenM)
 import Fixen.Pipeline (pipeline)
 
 type Config = ()
+type ServerState = IORef.IORef (Map.Map Uri [Text.Text])
 
 runFixenLanguageServer :: IO Int
-runFixenLanguageServer =
-  runServer serverDefinition
+runFixenLanguageServer = do
+  state <- IORef.newIORef Map.empty
+  runServer $ serverDefinition state
 
-serverDefinition :: ServerDefinition Config
-serverDefinition =
+serverDefinition :: ServerState -> ServerDefinition Config
+serverDefinition state =
   ServerDefinition
     { parseConfig = \_oldConfig _newConfig -> Right ()
     , onConfigChange = \_config -> pure ()
@@ -32,7 +37,7 @@ serverDefinition =
     , configSection = "fixen"
     , doInitialize = \environment _request ->
         pure $ Right environment
-    , staticHandlers = const handlers
+    , staticHandlers = const $ handlers state
     , interpretHandler = \environment ->
         Iso (runLspT environment) liftIO
     , options =
@@ -48,17 +53,33 @@ serverDefinition =
           }
     }
 
-handlers :: Handlers (LspM Config)
-handlers =
+programRelationNames :: AST.Program -> [Text.Text]
+programRelationNames program =
+  map
+    (AST.simpleIdentifier . AST.relationLikeName)
+    (AST.programRelationDeclarations program)
+
+handlers :: ServerState -> Handlers (LspM Config)
+handlers state =
   mconcat
     [ notificationHandler SMethod_Initialized $ \_notification ->
         liftIO $
           hPutStrLn stderr "fixen-lsp initialized"
-    , requestHandler SMethod_TextDocumentCompletion $ \_request 
-      responder -> do
-        let completions = map keywordCompletion fixenKeywords
-        responder (Right (InL completions))
-    , notificationHandler SMethod_TextDocumentDidOpen $ \notification -> do
+    , -- textCompletion
+      requestHandler SMethod_TextDocumentCompletion $
+        \request
+         responder -> do
+            let TRequestMessage _jsonrpc _requestId _method params = request
+                CompletionParams document _position _workDone _partialResult _context = params
+                TextDocumentIdentifier uri = document
+            cache <- liftIO $ IORef.readIORef state
+            let cachedRelationNames = Map.findWithDefault [] uri cache
+                relationCompletions = map relationCompletion cachedRelationNames
+                keywordCompletions = map keywordCompletion fixenKeywords
+                completions = relationCompletions <> keywordCompletions
+            responder (Right (InL completions))
+    , -- didOpen
+      notificationHandler SMethod_TextDocumentDidOpen $ \notification -> do
         let TNotificationMessage _ _ params = notification
             DidOpenTextDocumentParams document = params
             TextDocumentItem uri _languageId version contents = document
@@ -66,15 +87,19 @@ handlers =
           hPutStrLn stderr ("opened: " <> show uri)
           hPutStrLn stderr ("version: " <> show version)
           hPutStrLn stderr ("characters: " <> show (Text.length contents))
-        analyzeDocument uri contents
-    , notificationHandler SMethod_TextDocumentDidClose $ \notification -> do
+        analyzeDocument state uri contents
+    , -- didClose
+      notificationHandler SMethod_TextDocumentDidClose $ \notification -> do
         let TNotificationMessage _ _ params = notification
             DidCloseTextDocumentParams document = params
             TextDocumentIdentifier uri = document
         liftIO $ do
+          IORef.atomicModifyIORef' state $ \cache ->
+            (Map.delete uri cache, ())
           hPutStrLn stderr ("closed: " <> show uri)
         sendDocumentDiagnostics uri []
-    , notificationHandler SMethod_TextDocumentDidChange $ \notification -> do
+    , -- didChange
+      notificationHandler SMethod_TextDocumentDidChange $ \notification -> do
         let TNotificationMessage _ _ params = notification
             DidChangeTextDocumentParams document changes = params
             VersionedTextDocumentIdentifier uri version = document
@@ -82,7 +107,7 @@ handlers =
           hPutStrLn stderr ("changed: " <> show uri)
           hPutStrLn stderr ("version: " <> show version)
           hPutStrLn stderr ("changes: " <> show (length changes))
-        mapM_ (analyzeDocument uri . changeText) changes
+        mapM_ (analyzeDocument state uri . changeText) changes
     ]
 
 fixenKeywords :: [Text.Text]
@@ -128,6 +153,12 @@ keywordCompletion keyword =
     , _data_ = Nothing
     }
 
+relationCompletion :: Text.Text -> CompletionItem
+relationCompletion relation =
+  (keywordCompletion  relation)
+    { _kind = Just CompletionItemKind_Function
+    , _detail = Just "Fixen relation"
+    }
 
 changeText :: TextDocumentContentChangeEvent -> Text.Text
 changeText (TextDocumentContentChangeEvent (InR wholeDocument)) =
@@ -190,8 +221,8 @@ sendDocumentDiagnostics uri diagnostics =
     SMethod_TextDocumentPublishDiagnostics
     (PublishDiagnosticsParams uri Nothing diagnostics)
 
-analyzeDocument :: Uri -> Text.Text -> LspM Config ()
-analyzeDocument uri contents =
+analyzeDocument :: ServerState -> Uri -> Text.Text -> LspM Config ()
+analyzeDocument state uri contents =
   case uriToFilePath uri of
     Nothing ->
       liftIO $
@@ -225,8 +256,13 @@ analyzeDocument uri contents =
               )
 
           sendDocumentDiagnostics uri lspDiagnostics
-        Right _compilerOutput -> do
-          liftIO $
-            hPutStrLn stderr "analysis succeeded"
+        Right (program, _ruleForests, _representation, _generatedCode) ->
+          do
+            let names = programRelationNames program
+            liftIO $ do
+              IORef.atomicModifyIORef' state $ \cache ->
+                (Map.insert uri names cache, ())
+              hPutStrLn stderr "analysis succeeded"
+              hPutStrLn stderr ("relations: " <> show names)
 
-          sendDocumentDiagnostics uri []
+            sendDocumentDiagnostics uri []
