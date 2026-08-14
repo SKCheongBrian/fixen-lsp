@@ -54,6 +54,10 @@ handlers =
     [ notificationHandler SMethod_Initialized $ \_notification ->
         liftIO $
           hPutStrLn stderr "fixen-lsp initialized"
+    , requestHandler SMethod_TextDocumentCompletion $ \_request 
+      responder -> do
+        let completions = map keywordCompletion fixenKeywords
+        responder (Right (InL completions))
     , notificationHandler SMethod_TextDocumentDidOpen $ \notification -> do
         let TNotificationMessage _ _ params = notification
             DidOpenTextDocumentParams document = params
@@ -80,6 +84,50 @@ handlers =
           hPutStrLn stderr ("changes: " <> show (length changes))
         mapM_ (analyzeDocument uri . changeText) changes
     ]
+
+fixenKeywords :: [Text.Text]
+fixenKeywords =
+  [ "module"
+  , "where"
+  , "import"
+  , "qualified"
+  , "as"
+  , "include"
+  , "rel"
+  , "rule"
+  , "if"
+  , "partial"
+  , "ord"
+  , "lat"
+  , "priority"
+  , "query"
+  , "phases"
+  ]
+
+keywordCompletion :: Text.Text -> CompletionItem
+keywordCompletion keyword =
+  CompletionItem
+    { _label = keyword
+    , _labelDetails = Nothing
+    , _kind = Just CompletionItemKind_Keyword
+    , _tags = Nothing
+    , _detail = Nothing
+    , _documentation = Nothing
+    , _deprecated = Nothing
+    , _preselect = Nothing
+    , _sortText = Nothing
+    , _filterText = Nothing
+    , _insertText = Just keyword
+    , _insertTextFormat = Nothing
+    , _insertTextMode = Nothing
+    , _textEdit = Nothing
+    , _textEditText = Nothing
+    , _additionalTextEdits = Nothing
+    , _commitCharacters = Nothing
+    , _command = Nothing
+    , _data_ = Nothing
+    }
+
 
 changeText :: TextDocumentContentChangeEvent -> Text.Text
 changeText (TextDocumentContentChangeEvent (InR wholeDocument)) =
