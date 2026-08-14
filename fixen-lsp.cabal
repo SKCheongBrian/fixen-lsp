@@ -67,6 +67,13 @@ library
     exposed-modules:
         Fixen.LSP.Server
 
+    other-modules:
+        Fixen.LSP.Analysis
+        Fixen.LSP.Completion
+        Fixen.LSP.Diagnostics
+        Fixen.LSP.State
+        Fixen.LSP.Types
+
     build-depends:
         base >=4.18 && <5
       , containers
