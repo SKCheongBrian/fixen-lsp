@@ -63,6 +63,13 @@ handlers =
           hPutStrLn stderr ("version: " <> show version)
           hPutStrLn stderr ("characters: " <> show (Text.length contents))
         analyzeDocument uri contents
+    , notificationHandler SMethod_TextDocumentDidClose $ \notification -> do
+        let TNotificationMessage _ _ params = notification
+            DidCloseTextDocumentParams document = params
+            TextDocumentIdentifier uri = document
+        liftIO $ do
+          hPutStrLn stderr ("closed: " <> show uri)
+        sendDocumentDiagnostics uri []
     , notificationHandler SMethod_TextDocumentDidChange $ \notification -> do
         let TNotificationMessage _ _ params = notification
             DidChangeTextDocumentParams document changes = params
