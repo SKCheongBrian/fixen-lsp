@@ -38,7 +38,7 @@ jobs:
       - name: Checkout fixen
         uses: actions/checkout@v4
         with:
-          repository: SKCheongBrian/fixen
+          repository: plilab/fixen
           ref: feat/name_fields
           path: fixen
 
