@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: plilab/fixen
-          ref: feat/name_fields
+          ref: feat/lsp_integration
           path: fixen
 
       - name: Debug workspace
