@@ -30,19 +30,35 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: haskell-actions/setup@v2
+      - name: Checkout fixen-lsp
+        uses: actions/checkout@v4
         with:
-          ghc-version: "latest"
-          cabal-version: "latest"
+          path: fixen-lsp
 
-      - run: cabal update
+      - name: Checkout fixen
+        uses: actions/checkout@v4
+        with:
+          repository: SKCheongBrian/fixen
+          ref: feat/name_fields
+          path: fixen
 
-      - run: cabal build
+      - name: Setup Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.12.2"
+          cabal-version: "3.16.0.0"
+
+      - name: Cabal update
+        working-directory: fixen-lsp
+        run: cabal update
+
+      - name: Build
+        working-directory: fixen-lsp
+        run: cabal build
 
       - name: Find executable
         id: binary
+        working-directory: fixen-lsp
         shell: bash
         run: |
           echo "path=$(cabal list-bin fixen-lsp)" >> "$GITHUB_OUTPUT"
@@ -50,11 +66,12 @@ jobs:
       - name: Copy executable
         shell: bash
         run: |
-          mkdir dist
+          mkdir -p dist
           cp "${{ steps.binary.outputs.path }}" \
              "dist/${{ matrix.executable }}"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
         with:
           name: fixen-lsp-${{ matrix.target }}
           path: dist/${{ matrix.executable }}
