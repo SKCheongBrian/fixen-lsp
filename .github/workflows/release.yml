@@ -1,0 +1,60 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            executable: fixen-lsp
+
+          - os: macos-13
+            target: darwin-x64
+            executable: fixen-lsp
+
+          - os: macos-latest
+            target: darwin-arm64
+            executable: fixen-lsp
+
+          - os: windows-latest
+            target: win32-x64
+            executable: fixen-lsp.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "latest"
+          cabal-version: "latest"
+
+      - run: cabal update
+
+      - run: cabal build
+
+      - name: Find executable
+        id: binary
+        shell: bash
+        run: |
+          echo "path=$(cabal list-bin fixen-lsp)" >> "$GITHUB_OUTPUT"
+
+      - name: Copy executable
+        shell: bash
+        run: |
+          mkdir dist
+          cp "${{ steps.binary.outputs.path }}" \
+             "dist/${{ matrix.executable }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fixen-lsp-${{ matrix.target }}
+          path: dist/${{ matrix.executable }}
