@@ -71,6 +71,7 @@ library
         Fixen.LSP.Analysis
         Fixen.LSP.Completion
         Fixen.LSP.Diagnostics
+        Fixen.LSP.Hover
         Fixen.LSP.State
         Fixen.LSP.Types
 
@@ -79,6 +80,7 @@ library
       , containers
       , fixen
       , lsp >=2.7 && <2.9
+      , prettyprinter
       , text
 
 executable fixen-lsp
