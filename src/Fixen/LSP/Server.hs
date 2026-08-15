@@ -11,14 +11,14 @@ import System.IO (hPutStrLn, stderr)
 
 import Fixen.LSP.Analysis qualified as Analysis
 import Fixen.LSP.Completion qualified as Completion
-import Fixen.LSP.Diagnostics
-  ( sendDocumentDiagnostics
-  )
-import Fixen.LSP.State
-  ( ServerState
-  , deleteDocument
-  , newServerState
-  )
+import Fixen.LSP.Diagnostics (
+  sendDocumentDiagnostics,
+ )
+import Fixen.LSP.State (
+  ServerState,
+  deleteDocument,
+  newServerState,
+ )
 import Fixen.LSP.Types (Config)
 
 runFixenLanguageServer :: IO Int
@@ -26,9 +26,9 @@ runFixenLanguageServer = do
   state <- newServerState
   runServer (serverDefinition state)
 
-serverDefinition
-  :: ServerState
-  -> ServerDefinition Config
+serverDefinition ::
+  ServerState ->
+  ServerDefinition Config
 serverDefinition state =
   ServerDefinition
     { parseConfig =
@@ -58,79 +58,94 @@ serverDefinition state =
           }
     }
 
-handlers
-  :: ServerState
-  -> Handlers (LspM Config)
+handlers ::
+  ServerState ->
+  Handlers (LspM Config)
 handlers state =
   mconcat
     [ Completion.completionHandlers state
-
     , notificationHandler
         SMethod_Initialized
-        (\_notification ->
-          liftIO $
-            hPutStrLn stderr "fixen-lsp initialized"
+        ( \_notification ->
+            liftIO $
+              hPutStrLn stderr "fixen-lsp initialized"
         )
-
+    , notificationHandler
+        SMethod_WorkspaceDidChangeConfiguration
+        ( \_notification ->
+            -- make Vscode shut up
+            pure ()
+        )
+    , notificationHandler
+        SMethod_SetTrace
+        ( \_notification ->
+            -- Make VSCode shut up
+            pure ()
+        )
+    , requestHandler
+        SMethod_TextDocumentSemanticTokensFull
+        ( \_request responder ->
+            -- Make neovim shut up about semantic tokens
+            responder (Right (InL (SemanticTokens Nothing [])))
+        )
     , notificationHandler
         SMethod_TextDocumentDidOpen
-        (\notification -> do
-          let TNotificationMessage _ _ params =
-                notification
-              DidOpenTextDocumentParams document =
-                params
-              TextDocumentItem
-                uri
-                _languageId
-                version
-                contents =
-                  document
+        ( \notification -> do
+            let TNotificationMessage _ _ params =
+                  notification
+                DidOpenTextDocumentParams document =
+                  params
+                TextDocumentItem
+                  uri
+                  _languageId
+                  version
+                  contents =
+                    document
 
-          liftIO $ do
-            hPutStrLn stderr ("opened: " <> show uri)
-            hPutStrLn stderr ("version: " <> show version)
-            hPutStrLn
-              stderr
-              ("characters: " <> show (Text.length contents))
+            liftIO $ do
+              hPutStrLn stderr ("opened: " <> show uri)
+              hPutStrLn stderr ("version: " <> show version)
+              hPutStrLn
+                stderr
+                ("characters: " <> show (Text.length contents))
 
-          Analysis.analyzeDocument state uri contents
+            Analysis.analyzeDocument state uri contents
         )
-
     , notificationHandler
         SMethod_TextDocumentDidClose
-        (\notification -> do
-          let TNotificationMessage _ _ params =
-                notification
-              DidCloseTextDocumentParams document =
-                params
-              TextDocumentIdentifier uri =
-                document
+        ( \notification -> do
+            let TNotificationMessage _ _ params =
+                  notification
+                DidCloseTextDocumentParams document =
+                  params
+                TextDocumentIdentifier uri =
+                  document
 
-          liftIO $ do
-            deleteDocument state uri
-            hPutStrLn stderr ("closed: " <> show uri)
+            liftIO $ do
+              deleteDocument state uri
+              hPutStrLn stderr ("closed: " <> show uri)
 
-          sendDocumentDiagnostics uri []
+            sendDocumentDiagnostics uri []
         )
-
     , notificationHandler
         SMethod_TextDocumentDidChange
-        (\notification -> do
-          let TNotificationMessage _ _ params =
-                notification
-              DidChangeTextDocumentParams document changes =
-                params
-              VersionedTextDocumentIdentifier uri version =
-                document
+        ( \notification -> do
+            let TNotificationMessage _ _ params =
+                  notification
+                DidChangeTextDocumentParams document changes =
+                  params
+                VersionedTextDocumentIdentifier uri version =
+                  document
 
-          liftIO $ do
-            hPutStrLn stderr ("changed: " <> show uri)
-            hPutStrLn stderr ("version: " <> show version)
-            hPutStrLn stderr ("changes: " <> show (length changes))
+            liftIO $ do
+              hPutStrLn stderr ("changed: " <> show uri)
+              hPutStrLn stderr ("version: " <> show version)
+              hPutStrLn stderr ("changes: " <> show (length changes))
 
-          mapM_
-            (Analysis.analyzeDocument state uri .
-            Analysis.changeText)
-            changes
+            mapM_
+              ( Analysis.analyzeDocument state uri
+                  . Analysis.changeText
+              )
+              changes
         )
     ]
