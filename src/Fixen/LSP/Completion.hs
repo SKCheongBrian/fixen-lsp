@@ -14,7 +14,10 @@ import Fixen.LSP.State
   )
 import Fixen.LSP.Types
   ( Config
-  , DocumentAnalysis (analysisRelationNames)
+  , DocumentAnalysis 
+    ( analysisRelationNames
+    , analysisRuleNames
+    )
   )
 
 completionHandlers
@@ -39,20 +42,12 @@ completionHandler state request responder = do
 
   maybeAnalysis <- liftIO $ lookupDocument state uri
 
-  let cachedRelationNames =
-        maybe
-          []
-          analysisRelationNames
-          maybeAnalysis
-
-      relationCompletions =
-        map relationCompletion cachedRelationNames
-
-      keywordCompletions =
-        map keywordCompletion fixenKeywords
-
-      completions =
-        relationCompletions <> keywordCompletions
+  let cachedRelationNames = maybe [] analysisRelationNames maybeAnalysis
+      cachedRuleNames = maybe [] analysisRuleNames maybeAnalysis
+      relationCompletions = map relationCompletion cachedRelationNames
+      ruleCompletions = map ruleCompletion cachedRuleNames
+      keywordCompletions = map keywordCompletion fixenKeywords
+      completions = relationCompletions <> ruleCompletions <> keywordCompletions
 
   responder (Right (InL completions))
 
@@ -104,13 +99,10 @@ completionItem kind detail label =
     }
 
 keywordCompletion :: Text.Text -> CompletionItem
-keywordCompletion =
-  completionItem
-    CompletionItemKind_Keyword
-    Nothing
+keywordCompletion = completionItem CompletionItemKind_Keyword Nothing
 
 relationCompletion :: Text.Text -> CompletionItem
-relationCompletion =
-  completionItem
-    CompletionItemKind_Function
-    (Just "Fixen relation")
+relationCompletion = completionItem CompletionItemKind_Function (Just "Fixen relation")
+
+ruleCompletion :: Text.Text -> CompletionItem
+ruleCompletion = completionItem CompletionItemKind_Function (Just "Fixen rule")

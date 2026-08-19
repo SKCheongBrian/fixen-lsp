@@ -4,6 +4,7 @@ module Fixen.LSP.Analysis (
 ) where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.Function ((&))
 import Data.IntMap.Strict qualified as IntMap
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
@@ -23,6 +24,7 @@ import Fixen.Monad (runFixenM)
 import Fixen.Monad.Env.Symbol qualified as Symbol
 import Fixen.Pipeline (pipelineWithSymbols)
 
+import Data.Maybe (mapMaybe)
 import Fixen.LSP.Diagnostics (
   sendDocumentDiagnostics,
   toLspDiagnostic,
@@ -47,8 +49,8 @@ changeText (TextDocumentContentChangeEvent (InL partialChange)) =
 
 programRelationNames :: AST.Program -> [Text.Text]
 programRelationNames program = map relationName (AST.programRelationDeclarations program)
-  where
-    relationName = AST.simpleIdentifier . AST.relationLikeName
+ where
+  relationName = AST.simpleIdentifier . AST.relationLikeName
 
 renderType :: AST.Type -> Text.Text
 renderType =
@@ -69,16 +71,16 @@ relationHoverInfo relation =
     , hoverRange = Nothing
     , hoverContents = signature
     }
-  where
-    relationName = AST.simpleIdentifier (AST.relationLikeName relation)
+ where
+  relationName = AST.simpleIdentifier (AST.relationLikeName relation)
 
-    parameterTypes = map renderParameterType (AST.relationLikeArgs relation)
-    renderParameterType = renderType . AST.relationParameterType
+  parameterTypes = map renderParameterType (AST.relationLikeArgs relation)
+  renderParameterType = renderType . AST.relationParameterType
 
-    signature =
-      relationName
-        <> " : "
-        <> Text.intercalate " -> " (parameterTypes <> ["Relation"])
+  signature =
+    relationName
+      <> " : "
+      <> Text.intercalate " -> " (parameterTypes <> ["Relation"])
 
 programRelationHoverInfo :: AST.Program -> [HoverInfo]
 programRelationHoverInfo program = map relationHoverInfo (AST.programRelationDeclarations program)
@@ -95,31 +97,35 @@ ruleParameterHoverInfo parameter@(name, _parameterInfo) =
     , hoverContents = ruleParameterLine parameter
     }
 
+ruleInfoName :: Symbol.RuleInfo -> Maybe Text.Text
+-- ruleInfoName = fmap AST.simpleIdentifier . AST.ruleName . Symbol._ruleDeclaration
+ruleInfoName ruleInfo = ruleInfo & Symbol._ruleDeclaration & AST.ruleName & fmap AST.simpleIdentifier
+
+programRuleNames :: Symbol.SymbolEnv -> [Text.Text]
+programRuleNames env = env & Symbol._ruleMap & IntMap.elems & mapMaybe ruleInfoName
+
 ruleInfoHoverInfo :: Symbol.RuleInfo -> [HoverInfo]
 ruleInfoHoverInfo ruleInfo = ruleNameEntries <> parameterEntries
-  where
-    rule = Symbol._ruleDeclaration ruleInfo
-    parameters = Map.toList (Symbol._ruleBoundVars ruleInfo)
-    parameterEntries = map ruleParameterHoverInfo parameters
-    parameterLines = map (("  " <>) . ruleParameterLine) parameters
-    ruleNameEntries =
-      case AST.ruleName rule of
-        Nothing -> []
-        Just ruleIdentifier ->
-          [ HoverInfo
-              { hoverName = name
-              , hoverRange = Nothing
-              , hoverContents = Text.unlines (("rule " <> name) : parameterLines)
-              }
-          ]
-          where
-            name = AST.simpleIdentifier ruleIdentifier
+ where
+  parameters = Map.toList (Symbol._ruleBoundVars ruleInfo)
+  parameterEntries = map ruleParameterHoverInfo parameters
+  parameterLines = map (("  " <>) . ruleParameterLine) parameters
+  ruleNameEntries =
+    case ruleInfoName ruleInfo of
+      Nothing -> []
+      Just name ->
+        [ HoverInfo
+            { hoverName = name
+            , hoverRange = Nothing
+            , hoverContents = Text.unlines (("rule " <> name) : parameterLines)
+            }
+        ]
 
 programHoverInfo :: AST.Program -> Symbol.SymbolEnv -> [HoverInfo]
 programHoverInfo program symbolEnvironment = relationEntries <> ruleEntries
-  where
-    relationEntries = programRelationHoverInfo program
-    ruleEntries = concatMap ruleInfoHoverInfo (IntMap.elems (Symbol._ruleMap symbolEnvironment))
+ where
+  relationEntries = programRelationHoverInfo program
+  ruleEntries = concatMap ruleInfoHoverInfo (IntMap.elems (Symbol._ruleMap symbolEnvironment))
 
 analyzeDocument :: ServerState -> Uri -> Text.Text -> LspM Config ()
 analyzeDocument state uri contents =
@@ -153,6 +159,7 @@ analyzeDocument state uri contents =
                   DocumentAnalysis
                     { analysisContents = contents
                     , analysisRelationNames = programRelationNames program
+                    , analysisRuleNames = programRuleNames symbolEnvironment
                     , analysisHoverInfo = programHoverInfo program symbolEnvironment
                     }
 

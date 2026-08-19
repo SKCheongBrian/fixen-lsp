@@ -19,6 +19,7 @@ data HoverInfo = HoverInfo
 data DocumentAnalysis = DocumentAnalysis
   { analysisContents :: Text.Text
   , analysisRelationNames :: [Text.Text]
+  , analysisRuleNames :: [Text.Text]
   , analysisHoverInfo :: [HoverInfo]
   }
   deriving (Eq, Show)
