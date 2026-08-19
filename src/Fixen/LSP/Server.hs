@@ -11,6 +11,7 @@ import System.IO (hPutStrLn, stderr)
 
 import Fixen.LSP.Analysis qualified as Analysis
 import Fixen.LSP.Completion qualified as Completion
+import Fixen.LSP.Definition qualified as Definition
 import Fixen.LSP.Hover qualified as Hover
 import Fixen.LSP.Diagnostics (
   sendDocumentDiagnostics,
@@ -65,6 +66,7 @@ handlers ::
 handlers state =
   mconcat
     [ Completion.completionHandlers state
+    , Definition.definitionHandlers state
     , Hover.hoverHandlers state
     , notificationHandler
         SMethod_Initialized

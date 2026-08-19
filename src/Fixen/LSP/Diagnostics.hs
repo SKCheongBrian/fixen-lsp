@@ -1,6 +1,7 @@
-module Fixen.LSP.Diagnostics (
-  sendDocumentDiagnostics,
-  toLspDiagnostic,
+module Fixen.LSP.Diagnostics 
+( sendDocumentDiagnostics
+, toLspDiagnostic
+, toLspRange
 ) where
 
 import Language.LSP.Protocol.Message

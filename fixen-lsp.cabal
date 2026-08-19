@@ -70,9 +70,11 @@ library
     other-modules:
         Fixen.LSP.Analysis
         Fixen.LSP.Completion
+        Fixen.LSP.Definition
         Fixen.LSP.Diagnostics
         Fixen.LSP.Hover
         Fixen.LSP.State
+        Fixen.LSP.TextDocument
         Fixen.LSP.Types
 
     build-depends:

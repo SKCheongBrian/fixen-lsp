@@ -22,22 +22,25 @@ import Fixen.Diagnostics qualified as Fixen
 import Fixen.IR.AST qualified as AST
 import Fixen.Monad (runFixenM)
 import Fixen.Monad.Env.Symbol qualified as Symbol
-import Fixen.Pipeline (pipelineWithSymbols)
+import Fixen.Monad.Env.Position (PositionEnv)
+import Fixen.Pipeline (pipelineWithSymbolsAndPositions)
 
 import Data.Maybe (mapMaybe)
-import Fixen.LSP.Diagnostics (
-  sendDocumentDiagnostics,
-  toLspDiagnostic,
- )
+import Fixen.LSP.Diagnostics 
+  ( sendDocumentDiagnostics
+  , toLspDiagnostic
+  , toLspRange
+   )
 import Fixen.LSP.State (
   ServerState,
   storeDocument,
  )
-import Fixen.LSP.Types (
-  Config,
-  DocumentAnalysis (..),
-  HoverInfo (..),
- )
+import Fixen.LSP.Types 
+  ( Config
+  , DefinitionInfo (..)
+  , DocumentAnalysis (..)
+  , HoverInfo (..)
+  )
 
 changeText :: TextDocumentContentChangeEvent -> Text.Text
 changeText (TextDocumentContentChangeEvent (InR wholeDocument)) =
@@ -127,6 +130,34 @@ programHoverInfo program symbolEnvironment = relationEntries <> ruleEntries
   relationEntries = programRelationHoverInfo program
   ruleEntries = concatMap ruleInfoHoverInfo (IntMap.elems (Symbol._ruleMap symbolEnvironment))
 
+identifierDefinition
+  :: PositionEnv
+  -> AST.SimpleIdentifier
+  -> Maybe DefinitionInfo
+identifierDefinition positionEnvironment identifier = do
+  compilerPosition <- IntMap.lookup (AST.simpleIdentifierNodeId identifier) positionEnvironment
+  let sourceSpan = Fixen.positionToFixenSpan compilerPosition
+  pure DefinitionInfo
+        { definitionName = AST.simpleIdentifier identifier
+        , definitionUri = filePathToUri (Fixen.fixenSourceFile sourceSpan)
+        , definitionRange = toLspRange (Just sourceSpan)
+        }
+
+programDefinitions
+  :: PositionEnv
+  -> AST.Program
+  -> Symbol.SymbolEnv
+  -> [DefinitionInfo]
+programDefinitions positionEnvironment program symbolEnvironment =
+  mapMaybe (identifierDefinition positionEnvironment) identifiers
+  where
+    relationIdentifiers = map AST.relationLikeName (AST.programRelationDeclarations program)
+    ruleIdentifiers = 
+      mapMaybe 
+        (AST.ruleName . Symbol._ruleDeclaration)
+        (IntMap.elems (Symbol._ruleMap symbolEnvironment))
+    identifiers = relationIdentifiers <> ruleIdentifiers
+
 analyzeDocument :: ServerState -> Uri -> Text.Text -> LspM Config ()
 analyzeDocument state uri contents =
   case uriToFilePath uri of
@@ -137,7 +168,7 @@ analyzeDocument state uri contents =
       result <-
         liftIO $
           runFixenM $
-            pipelineWithSymbols
+            pipelineWithSymbolsAndPositions
               filePath
               (Text.unpack contents)
               (\_warning -> pure ())
@@ -151,6 +182,7 @@ analyzeDocument state uri contents =
         Right
           ( program
             , symbolEnvironment
+            , positionEnvironment
             , _ruleForests
             , _representation
             , _generatedCode
@@ -161,6 +193,7 @@ analyzeDocument state uri contents =
                     , analysisRelationNames = programRelationNames program
                     , analysisRuleNames = programRuleNames symbolEnvironment
                     , analysisHoverInfo = programHoverInfo program symbolEnvironment
+                    , analysisDefinitions = programDefinitions positionEnvironment program symbolEnvironment
                     }
 
             liftIO $ do
