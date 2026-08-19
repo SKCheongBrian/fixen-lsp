@@ -44,17 +44,6 @@ jobs:
           ghc-version: "9.12.2"
           cabal-version: "3.16.1.0"
 
-      - name: Configure Cabal
-        shell: bash
-        run: |
-          mkdir -p ~/.cabal
-          if [ ! -f ~/.cabal/config ]; then
-            cabal user-config init
-          fi
-          sed -i.bak \
-            's|url: http://hackage.haskell.org/|url: https://hackage.haskell.org/|' \
-            ~/.cabal/config
-
       - name: Cabal update
         working-directory: fixen-lsp
         run: cabal update
